@@ -1,9 +1,9 @@
-var miApiKey ="GWfRtXi1Lwt4jcqK";
+var miApiKey ="0t5e6c4t6wxd6aks";
 
 var applicationSettingsModule = require("application-settings");
 
 var configObject = {
-	apiUrl: "https://api.everlive.com/v1/0t5e6c4t6wxd6aks/",
+	apiUrl: "https://api.everlive.com/v1/GWfRtXi1Lwt4jcqK/",
 	invalidateToken: function() {
 		this.token = "";
 	}

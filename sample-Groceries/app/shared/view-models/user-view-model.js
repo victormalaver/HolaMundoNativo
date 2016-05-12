@@ -1,78 +1,104 @@
-var config = require("../../shared/config");
-var Observable = require("data/observable").Observable;
-var validator = require("email-validator");
+'use strict';
+var _,
 
-function User(info) {
-	info = info || {};
+    dataService = require('../../../dataProviders/pizzaHut2'),
+    localSettings = require('application-settings'),
+    // additional requires
 
-	// You can add properties to observables on creation
-	var viewModel = new Observable({
-		email: info.email || "",
-		password: info.password || ""
-	});
+    consts;
 
-	viewModel.login = function() {
-		return fetch(config.apiUrl + "oauth/token", {
-			method: "POST",
-			body: JSON.stringify({
-				username: viewModel.get("email"),
-				password: viewModel.get("password"),
-				grant_type: "password"
-			}),
-			headers: {
-				"Content-Type": "application/json"
-			}
-		})
-		.then(handleErrors)
-		.then(function(response) {
-			return response.json();
-		}).then(function(data) {
-			config.token = data.Result.access_token;
-		});
-	};
+function Service() {}
 
-	viewModel.register = function() {
-		return fetch(config.apiUrl + "Users", {
-			method: "POST",
-			body: JSON.stringify({
-				Username: viewModel.get("email"),
-				Email: viewModel.get("email"),
-				Password: viewModel.get("password")
-			}),
-			headers: {
-				"Content-Type": "application/json"
-			}
-		})
-		.then(handleErrors);
-	};
+consts = {
+    accessTokenKey: 'accessToken',
+    accessTokenTypeKey: 'accessTokenType',
+    accessTokenPrincipalIdKey: 'accessTokenPrincipalId',
+    rememberKey: 'pizzaHut2_authData_homeViewModel'
+};
 
-	viewModel.resetPassword = function() {
-		return fetch(config.apiUrl + "Users/resetpassword", {
-			method: "POST",
-			body: JSON.stringify({
-				Email: viewModel.get("email"),
-			}),
-			headers: {
-				"Content-Type": "application/json"
-			}
-		})
-		.then(handleErrors);
-	};
+function validateArgs(args) {
+    if (!args.email) {
+        throw new Error('Service: login - missing email');
+    }
 
-	viewModel.isValidEmail = function() {
-		var email = this.get("email");
-		return validator.validate(email);
-	};
-
-	return viewModel;
+    if (!args.password) {
+        throw new Error('Service: login - missing password');
+    }
 }
 
-function handleErrors(response) {
-	if (!response.ok) {
-		console.log(JSON.stringify(response));
-		throw Error(response.statusText);
-	}
-	return response;
-}
+Service.prototype.rememberKey = consts.rememberKey;
+Service.prototype.signin = function(args, successCallback, errorCallback) {
+    validateArgs(args);
 
-module.exports = User;
+    return dataService.Users.login(args.email, args.password)
+        .then(function(e) {
+            localSettings.setString(consts.accessTokenKey,
+                e.result.access_token);
+            localSettings.setString(consts.accessTokenTypeKey,
+                e.result.token_type);
+            localSettings.setString(consts.accessTokenPrincipalIdKey,
+                e.result.principal_id);
+
+            var rememberedData = {
+                email: args.email,
+                password: args.password
+            };
+
+            if (args.rememberme && rememberedData.email && rememberedData.password) {
+                localSettings.setString(consts.rememberKey, JSON.stringify(rememberedData));
+            }
+
+            successCallback();
+        }, errorCallback);
+};
+
+Service.prototype.signout = function(successCallback, errorCallback) {
+    if (!errorCallback) {
+        errorCallback = function() {};
+    }
+    return this.getCurrentUser().then(function _logoutUser() {
+        return dataService.Users.logout()
+            .then(function(e) {
+                localSettings.remove(consts.accessTokenKey);
+                localSettings.remove(consts.accessTokenTypeKey);
+                localSettings.remove(consts.accessTokenPrincipalIdKey);
+                localSettings.remove(consts.rememberKey);
+
+                successCallback();
+            }, errorCallback);
+    }, errorCallback);
+};
+
+Service.prototype.register = function(args, successCallback, errorCallback) {
+    validateArgs(args);
+
+    return dataService.Users.register(args.email, args.password, {
+            Email: args.email,
+            DisplayName: args.displayName
+        })
+        .then(successCallback, errorCallback);
+};
+
+Service.prototype.getCurrentUser = function() {
+    return dataService.Users.currentUser();
+};
+
+Service.prototype.isAuthenticated = function() {
+    return localSettings.getString(consts.accessTokenKey) &&
+        localSettings.getString(consts.accessTokenTypeKey) &&
+        localSettings.getString(consts.accessTokenPrincipalIdKey);
+};
+
+Service.prototype.setAuthorization = function() {
+    dataService.Users.setAuthorization(
+        localSettings.getString(consts.accessTokenKey),
+        localSettings.getString(consts.accessTokenTypeKey),
+        localSettings.getString(consts.accessTokenPrincipalIdKey));
+};
+// additional properties
+
+// START_CUSTOM_CODE_homeView
+// Add custom code here. For more information about custom code, see http://docs.telerik.com/platform/screenbuilder/troubleshooting/how-to-keep-custom-code-changes
+
+// END_CUSTOM_CODE_homeView
+module.exports = new Service();
